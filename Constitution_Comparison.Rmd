@@ -1,0 +1,128 @@
+---
+title: "Code and Output"
+output: pdf_document
+---
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+##Load packages for Natural Language Processing
+library('tm')
+library('SnowballC')
+library('wordcloud')
+library('textstem')
+
+##Load packages for visualization
+library('RColorBrewer')
+library('igraph')
+library ('shiny')
+
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+#set working directory
+setwd('C:/Users/Sushant/Desktop/Data_Science_R/Constitution_Comparison/consts')
+
+#Create a list of some words that you want to remove
+other_words = c("article", "subarticle")
+
+#Get the document and clean it
+constitution = read.csv('Constitutions.csv', stringsAsFactors = FALSE)
+corpus = Corpus(VectorSource(constitution$Constitution))
+corpus = tm_map(corpus, stripWhitespace)
+corpus = tm_map(corpus, removePunctuation)
+corpus = tm_map(corpus, removeNumbers)
+corpus = tm_map (corpus, content_transformer(tolower))
+corpus = tm_map(corpus, removeWords, stopwords('en'))
+corpus = tm_map(corpus, removeWords, other_words)
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+#Lemmatize the corpus and remove the name of the country
+corpus = tm_map(corpus, lemmatize_strings)
+corpus = tm_map(corpus, removeWords, as.array(constitution$Country))
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+#Create a document term matrix and thenconver to regular R matrix
+term_mat = DocumentTermMatrix(corpus)
+R_mat = as.matrix(term_mat)
+#Attach country names as rowname of the matrix and compute the frequency of each words
+rownames(R_mat)=constitution$Country
+corp_freq = colSums(R_mat)
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+#create wordcloud
+cols = c('red', 'blue', 'orange', 'navy', 	'#006400', 'magenta')
+dev.new(width = 10000, height = 10000, unit = "px")
+wordcloud(colnames(R_mat), R_mat['nepal old',],  max.words = 15, scale=c(5,0.5), colors = cols, random.color = TRUE)
+title(main = "Nepal 1990", cex.main = 2)
+wordcloud(colnames(R_mat), R_mat['nepal',],  max.words = 15, scale=c(4,0.5), colors = cols, random.color = TRUE)
+title(main = "Nepal 2015", cex.main = 2)
+wordcloud(colnames(R_mat), R_mat['bhutan',],  max.words = 15, scale=c(4,0.5), colors = cols, random.color = TRUE)
+title(main = "Bhutan 2008", cex.main = 2)
+```
+
+Above, we can see that auxiliary verb, 'shall' is the most common word in all three constitutions. However, such words are common in all litigation documents and do not capture the unique aspects of any country's constitution. Therefore we can reduce the weight of these words by using Inverse Document Frequency, which normalizes the word frequency within a document based on the word frequency within the entire corpus.
+
+```{r}
+#Weight the matrix
+R_mat_weighted = as.matrix(weightTfIdf(term_mat, normalize = FALSE))
+rownames(R_mat_weighted) = constitution$Country
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+#create wordcloud
+wordcloud(colnames(R_mat_weighted), R_mat_weighted['nepal old',],  max.words = 15, scale=c(5,0.5), colors = cols, random.color = TRUE)
+title(main = "Nepal 1990", cex.main = 2)
+wordcloud(colnames(R_mat_weighted), R_mat_weighted['nepal',],  max.words = 15, scale=c(3.5,0.5), colors = cols, random.color = TRUE)
+title(main = "Nepal 2015", cex.main = 2)
+wordcloud(colnames(R_mat_weighted), R_mat_weighted['bhutan',],  max.words = 15, scale=c(3.5,0.5), colors = cols, random.color = TRUE)
+title(main = "Bhutan 2008", cex.main = 2)
+```
+In the above word cloud, we can see that auxiliary verbs such as 'shall' and 'may' are absent. Now, before computing K-means clusters of the documents, we normalize the document using L2 normalization. This is a within-document normalization process to ensure that the word frequencies of longer and shorter documents are comparable.
+
+```{r}
+#Normalize by length of each document, so that frequency is unaffected by length of preamble
+R_mat_normalized = R_mat_weighted/sqrt(rowSums(R_mat_weighted^2))
+
+K_means = kmeans(R_mat_normalized, centers = 10)
+
+for (c in 1:10) {
+  cat("Cluster ", c, ":\n")
+  print(constitution$Country[K_means$cluster == c])
+  cat("\n\n")
+}
+```
+Some aspects of the above results are interesting, while others are less so. First and foremost, the two constitutions of Nepal lie in different clusters, which is a good sign for us to continue with further analysis. Additionally, Cluster 1 comprises of Caribbean nations, except for Australia. The inclusion of Australia in the cluster can be justified by the fact that it is a British colony and still constitutionally accepts British Monarchy. Additionally, Cluster 2 is a cluster of Monarchies--absolute or otherwise. Cluster 5 is a group of republics with a dominant Muslim population except for Oman, which is a Monarchy. Finally, Cluster 3 is Belgium and  African countries with Belgian or French influence. 
+
+While there are some faint patterns in other clusters as well, they can be considered insignificant. The method of clustering also seems to be unstable, as its result depends on the initial choice of centres, which takes place randomly. Furthermore, cluster analysis doesn't give a measure of difference or similarity. Therefore, in the next step I measure cosine similarity of the constitution, which mathematically, is the cosine of the angle between the two vectors.
+
+```{r}
+#Write a cosine similarity function
+#Nothe that the function computes similarity between one vector and one matrix
+cosine = function(vec_a, mat_b) {
+dot_product = apply(vec_a * t(mat_b), 2, sum)
+mag_product = sqrt(sum(vec_a^2)) * sqrt(apply(mat_b^2, 1, sum))
+return(dot_product / mag_product)
+}
+
+```
+
+```{r}
+#Compute the cosine similarity between new constitution of Nepal and rest of the countries
+# Get Nepal's index
+nep_row = (rownames(R_mat_weighted) == "nepal")
+
+# Get similarity with US using `term_mat_tfidf`
+nep_similarity = cosine(R_mat_weighted[nep_row, ], R_mat_weighted[!nep_row, ])
+sort(nep_similarity, decreasing = TRUE)[1:35]
+```
+
+```{r}
+wordcloud(colnames(R_mat_weighted), R_mat_weighted['nepal',],  max.words = 15, scale=c(5,0.5), colors = cols, random.color = TRUE)
+title(main = "Nepal", cex.main = 2)
+wordcloud(colnames(R_mat_weighted), R_mat_weighted['somalia',],  max.words = 15, scale=c(5, 0.5), colors = cols, random.color = TRUE)
+title(main = "Somalia", cex.main = 2)
+wordcloud(colnames(R_mat_weighted), R_mat_weighted['pakistan',],  max.words = 15, scale=c(3.5,0.5), colors = cols, random.color = TRUE)
+title(main = "Pakistan", cex.main = 2)
+```
+Finally, we see that the old constitution of Nepal ranks 28th in the similarity with Nepal's 2015 constitution. Interestingly, Somalia's constitution is the most similar to Nepal's. Initially, it can be difficult to reconcile given no cultural, political, or geographic connection between Nepal and Somalia. However, if we see the word cloud of the two countries that have the most similar constitutions to Nepal's, it is evident that all three nations focus on the structure of governance and administrative system in the constitution. Especially given the fact that the Somali constitution was adopted in 2012, which states the provision for the Federal Parliamentary Republic, the similarity with Nepal's constitution is plausible.
