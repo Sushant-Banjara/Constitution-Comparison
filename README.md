@@ -5,4 +5,4 @@ There are two files in this repository:
 
 **Text_to_CSV.ipynb** contains code for cleaning .txt files and combining all the constitutions to single csv format.
 
-**Constitution_Comparision.pdf** contains R code and output for text analysis and comparision of the constituions.
+**Constitution_Comparison.pdf** contains R code and output for text analysis and comparision of the constituions.
