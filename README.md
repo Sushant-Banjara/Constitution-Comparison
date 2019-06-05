@@ -3,5 +3,5 @@ A tad bit of text processing and turns out that the Somali Constitution is the m
 
 There are two files in this repository:
 
-Text_to_Csv.ipynb is contains code for cleaning the .txt files and combining all the constitutions to single csv file.
+Text_to_Csv.ipynb is contains code for cleaning .txt files and combining all the constitutions to single csv format.
 
